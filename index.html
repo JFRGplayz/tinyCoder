@@ -1,0 +1,109 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TinyCoder | Tiny</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+    <div id="app">
+
+        <aside id="sidebar">
+            <div id="brand">
+                <div id="brand-icon">T</div>
+                <div>
+                    <h2>TinyCoder</h2>
+                    <span>Version 0.1</span>
+                </div>
+            </div>
+
+            <button id="new-chat">+ New conversation</button>
+
+            <div id="sidebar-section">
+                <span>MODEL STATUS</span>
+                <div id="model-status">
+                    <span id="status-indicator"></span>
+                    <span id="status-text">Initialising...</span>
+                </div>
+            </div>
+
+            <div id="sidebar-section">
+                <span>TRAINING</span>
+                <div class="stat">
+                    <span>Examples</span>
+                    <strong id="example-count">0</strong>
+                </div>
+                <div class="stat">
+                    <span>Training steps</span>
+                    <strong id="training-count">0</strong>
+                </div>
+            </div>
+
+            <div id="sidebar-footer">
+                <span>Built from scratch.</span>
+            </div>
+        </aside>
+
+        <main id="main">
+
+            <header id="header">
+                <div>
+                    <h3>Chat with Tiny</h3>
+                    <span id="header-status">Your local AI assistant</span>
+                </div>
+                <span id="model-version">TINY v0.1</span>
+            </header>
+
+            <section id="chat-area">
+                <div id="welcome">
+                    <div id="welcome-icon">T</div>
+                    <h1>Hello! I'm Tiny.</h1>
+                    <p>
+                        I'm a little AI being trained to help
+                        with programming, coding and debugging.
+                    </p>
+
+                    <div id="suggestions">
+                        <button data-prompt="Explain what JavaScript is.">
+                            Explain JavaScript
+                        </button>
+                        <button data-prompt="Write an HTML webpage.">
+                            Write HTML
+                        </button>
+                        <button data-prompt="What is a variable in Python?">
+                            Learn Python
+                        </button>
+                    </div>
+                </div>
+
+                <div id="messages"></div>
+            </section>
+
+            <section id="composer">
+                <div id="composer-inner">
+                    <textarea
+                        id="message-input"
+                        placeholder="Message Tiny..."
+                        rows="1"
+                    ></textarea>
+
+                    <button id="send-button" title="Send message">
+                        ↑
+                    </button>
+                </div>
+
+                <div id="composer-footer">
+                    Tiny runs locally in your browser.
+                </div>
+            </section>
+
+        </main>
+
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
+</body>
+</html>
