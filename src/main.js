@@ -1,7 +1,7 @@
 
 import { Transformer } from "./transformer.js";
 import { Tokenizer } from "./tokenizer.js";
-import { Adam, trainExample } from "./training.js";
+import { Adam, trainChatExample } from "./training.js";
 import { generate } from "./generation.js";
 
 import {
@@ -14,6 +14,10 @@ import {
 
 const $ = id => document.getElementById(id);
 
+// ========================================
+// MODEL SETUP
+// ========================================
+
 const tokenizer = new Tokenizer();
 
 const model = new Transformer(
@@ -23,17 +27,23 @@ const model = new Transformer(
 );
 
 const parameters = model.parameters();
-
 const optimizer = new Adam(parameters, 0.001);
 
 let trainingSteps = 0;
 let exampleCount = 0;
 let busy = false;
 
+// Current conversation context
+let chatHistory = [];
+
 const welcome = $("welcome");
 const messages = $("messages");
 const input = $("message-input");
 const sendButton = $("send-button");
+
+// ========================================
+// CHAT UI
+// ========================================
 
 function addMessage(role, content) {
     welcome.style.display = "none";
@@ -52,7 +62,8 @@ function addMessage(role, content) {
     container.append(author, body);
     messages.appendChild(container);
 
-    $("chat-area").scrollTop = $("chat-area").scrollHeight;
+    $("chat-area").scrollTop =
+        $("chat-area").scrollHeight;
 
     return container;
 }
@@ -61,6 +72,10 @@ function updateStats() {
     $("example-count").textContent = exampleCount;
     $("training-count").textContent = trainingSteps;
 }
+
+// ========================================
+// MODEL SAVE / LOAD
+// ========================================
 
 function saveModel() {
     const weights = parameters.map(parameter => parameter.data);
@@ -82,31 +97,18 @@ async function loadModel() {
     return true;
 }
 
+// ========================================
+// TEACHING
+// ========================================
+
 async function teach(question, answer) {
-    const text = `User: ${question}\nTiny: ${answer}\n`;
-
-    const tokens = tokenizer.encode(text);
-
-    if (tokens.length < 2) {
-        throw new Error("Training example is too short.");
-    }
-
-    // Train using bounded chunks.
-    // Each chunk predicts its following characters.
-    const chunkSize = model.contextSize;
-
-    for (let start = 0; start < tokens.length - 1; start += chunkSize) {
-        const chunk = tokens.slice(start, start + chunkSize + 1);
-
-        if (chunk.length < 2) continue;
-
-        const inputs = chunk.slice(0, -1);
-        const targets = chunk.slice(1);
-
-        trainExample(model, optimizer, inputs, targets);
-
-        trainingSteps++;
-    }
+    const loss = trainChatExample(
+        model,
+        optimizer,
+        tokenizer,
+        question,
+        answer
+    );
 
     await saveRecord("training", {
         question,
@@ -117,7 +119,11 @@ async function teach(question, answer) {
     await saveModel();
 
     exampleCount++;
+    trainingSteps++;
+
     updateStats();
+
+    return loss;
 }
 
 async function restoreTraining() {
@@ -128,19 +134,43 @@ async function restoreTraining() {
     updateStats();
 }
 
+// ========================================
+// CONVERSATION
+// ========================================
+
+function buildPrompt(newMessage) {
+    // Keep a few recent exchanges for context.
+    const recentHistory = chatHistory.slice(-3);
+
+    let prompt = "";
+
+    for (const exchange of recentHistory) {
+        prompt += `User: ${exchange.user}\n`;
+        prompt += `Tiny: ${exchange.assistant}\n`;
+    }
+
+    prompt += `User: ${newMessage}\nTiny:`;
+
+    return prompt;
+}
+
 async function sendMessage() {
     const text = input.value.trim();
 
     if (!text || busy) return;
 
     input.value = "";
+
     addMessage("user", text);
 
     busy = true;
     sendButton.disabled = true;
 
     try {
-        // Teaching command
+        // ====================================
+        // TEACHING COMMAND
+        // ====================================
+
         if (text.startsWith("!teach")) {
             const content = text.slice(6).trim();
             const parts = content.split("\n---\n");
@@ -148,23 +178,42 @@ async function sendMessage() {
             if (parts.length !== 2) {
                 addMessage(
                     "assistant",
-                    "Teaching format:\n!teach\nYour question\n---\nThe correct answer"
+                    "Teaching format:\n\n!teach\nYour question\n---\nThe correct answer"
                 );
             } else {
-                const [question, answer] = parts;
+                const question = parts[0].trim();
+                const answer = parts[1].trim();
 
-                await teach(question.trim(), answer.trim());
+                if (!question || !answer) {
+                    addMessage(
+                        "assistant",
+                        "Both a question and an answer are required."
+                    );
+
+                    return;
+                }
 
                 addMessage(
                     "assistant",
-                    "Thank you! I've added your example to my training data and updated my model weights."
+                    "Learning this example... my tiny brain is working."
+                );
+
+                const loss = await teach(question, answer);
+
+                addMessage(
+                    "assistant",
+                    `I've trained on that example!\nTraining loss: ${loss.toFixed(4)}\nExamples learned: ${exampleCount}`
                 );
             }
 
             return;
         }
 
-        const prompt = `User: ${text}\nTiny:`;
+        // ====================================
+        // NORMAL CHAT
+        // ====================================
+
+        const prompt = buildPrompt(text);
 
         const response = generate(
             model,
@@ -173,14 +222,21 @@ async function sendMessage() {
             120
         );
 
-        addMessage(
-            "assistant",
-            response.trim() || "I don't have a response yet."
-        );
+        const cleanResponse =
+            response.trim() || "I'm not sure what to say yet.";
 
+        addMessage("assistant", cleanResponse);
+
+        // Keep conversation in memory for context.
+        chatHistory.push({
+            user: text,
+            assistant: cleanResponse
+        });
+
+        // Save conversation to IndexedDB.
         await saveRecord("conversations", {
             user: text,
-            assistant: response,
+            assistant: cleanResponse,
             created: Date.now()
         });
 
@@ -198,6 +254,10 @@ async function sendMessage() {
     }
 }
 
+// ========================================
+// INITIALISATION
+// ========================================
+
 async function initialise() {
     try {
         await openMemory();
@@ -211,7 +271,7 @@ async function initialise() {
 
         addMessage(
             "assistant",
-            "Hello! I'm Tiny. My neural network is ready. I'm still learning, so my answers may not make sense yet. You can teach me using !teach."
+            "Hello! I'm Tiny. I'm still learning how to chat, but every example you teach me helps train my neural network. Try talking to me, or use !teach to teach me something."
         );
 
     } catch (error) {
@@ -226,6 +286,10 @@ async function initialise() {
     }
 }
 
+// ========================================
+// EVENT LISTENERS
+// ========================================
+
 sendButton.addEventListener("click", sendMessage);
 
 input.addEventListener("keydown", event => {
@@ -237,6 +301,9 @@ input.addEventListener("keydown", event => {
 
 $("new-chat").addEventListener("click", () => {
     messages.replaceChildren();
+
+    chatHistory = [];
+
     welcome.style.display = "block";
 });
 
